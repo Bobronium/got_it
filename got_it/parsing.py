@@ -1,12 +1,11 @@
 import inspect
-import logging
 from functools import partial
-from typing import Type, Tuple, Dict, Optional
+from typing import Type
 
 import pydantic
 
-from .args import restore_args, ArgsSpec
-from .typing import Wrapped, ParsedArgs, TupleAny, DictStrAny, ModelType
+from .args import ArgsSpec, restore_args
+from .typing import Wrapped, ParsedArgs, TupleAny, DictStrAny
 
 # in pydantic 1.0 validate_model doesn't have attr raise_exc and always returns exception
 if 'raise_exc' in inspect.getfullargspec(pydantic.validate_model).args:
@@ -74,35 +73,3 @@ def parse_result(model, result):
     if validation_error:
         raise validation_error
     return result['__root__']
-
-
-def prepare_models(
-        wrapped: Wrapped,
-        args_spec: ArgsSpec,
-        config: Type[pydantic.BaseConfig] = None,
-        validators: Dict[str, classmethod] = None,
-        check_returns: bool = False
-) -> Tuple[ModelType, Optional[ModelType]]:
-
-    args_model = pydantic.create_model(
-        model_name=getattr(wrapped, '__qualname__', 'callable') + '_args_model',
-        __config__=config,
-        __validators__=validators,
-        **args_spec.field_definitions
-    )
-
-    args_model.__config__.extra = pydantic.Extra.forbid
-    logging.debug(f'Created arguments model for {wrapped} with fields: {args_model.__fields__}')
-    wrapped.__args_model__ = args_model
-
-    if check_returns:
-        class ReturnModel(pydantic.BaseModel):
-            Config = config
-            __annotations__ = {'__root__': wrapped.__annotations__['return']}
-
-        logging.debug(f'Created returns model for {wrapped} with fields: {ReturnModel.__fields__}')
-        wrapped.__returns_model__ = ReturnModel
-        return args_model, ReturnModel
-
-    wrapped.__returns_model__ = None
-    return args_model, None

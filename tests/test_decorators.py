@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError, BaseConfig, BaseModel
 
 from got_it import got_it, ignore_it
+from got_it.decorators import got_it_everywhere
 
 
 def test_basic():
@@ -50,7 +51,7 @@ def test_classes():
         def static_m(i: int):
             return i
 
-    @got_it(include_bases=True, exclude={'exclude_m'}, include={'__init__'})
+    @got_it_everywhere(include_bases=True, exclude={'exclude_m'}, include={'__init__'})
     class A(B):
         def __init__(self, i: int):
             self.i = i
@@ -148,6 +149,6 @@ def test_errors():
     with pytest.raises(TypeError, match="got multiple values for argument 'a'"):
         f(1, a=1)
 
-    with pytest.raises(TypeError, match='`exclude` and `include_bases` args can be used only when decorate a class'):
+    with pytest.raises(TypeError, match='wrapping class is not supported, use `got_it_everywhere` instead'):
         @got_it(exclude=set(), include_bases=True)
-        def f(a: int): ...
+        class A: ...
