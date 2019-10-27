@@ -1,0 +1,36 @@
+[build-system]
+requires = ["flit"]
+build-backend = "flit.buildapi"
+
+[tool.flit.metadata]
+module = "got_it"
+author = "MrMrRobat"
+author-email = "appkiller16@gmail.com"
+home-page = "https://github.com/MrMrRobat/got_it"
+description-file = "README.md"
+requires = ["pydantic>=0.32"]
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+
+[tool.flit.metadata.requires-extra]
+tests = [
+  "pytest",
+  "pydantic>=1.0",
+]
+
+[tool.dephell.main]
+from = {format = "flit", path = "pyproject.toml"}
+to = {format = "setuppy", path = "setup.py"}
+
+[tool.dephell.pytest]
+from = {format = "flit", path = "pyproject.toml"}
+envs = ["main", "tests"]
+command = "python -m pytest tests/"
