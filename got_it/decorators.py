@@ -33,7 +33,7 @@ def ignore_it(obj: T) -> T:
 class GotItMeta(type):
     def __call__(
             cls,
-            *one_callable_to_wrap: Wrapped,  # use @got_it without call, if no parameters needed
+            *one_obj_to_wrap: Wrapped,  # use @got_it without call, if no parameters needed
             **kwargs,
     ) -> Union[Wrapped, Decorator]:
         """
@@ -61,19 +61,18 @@ class GotItMeta(type):
         :return: parametrized decorator or decorated function/class
         """
         # init class
-        decorator = super().__call__(**kwargs)
-        if not one_callable_to_wrap:
-            return decorator
+        if not one_obj_to_wrap:
+            return super().__call__(**kwargs)
 
-        to_wrap = one_callable_to_wrap[0]
+        to_wrap = one_obj_to_wrap[0]
         # check, that is not a config given as positional arg, just in case.
         # we can't just check that is function cause it can be a class to decorate
         is_config = isinstance(to_wrap, type) and issubclass(to_wrap, pydantic.BaseConfig) or any(
             not attr.startswith('_') and attr in pydantic.BaseConfig.__dict__ for attr in to_wrap.__dict__
         )
-        if is_config or len(one_callable_to_wrap) > 1:
-            raise TypeError(f'`got_it` supports keywords arguments only')
-        return decorator.wrap(to_wrap)
+        if is_config or len(one_obj_to_wrap) > 1:
+            super().__call__(*one_obj_to_wrap, **kwargs)  # to get TypeError
+        return super().__call__(**kwargs).wrap(to_wrap)
 
 
 class got_it(metaclass=GotItMeta):
@@ -240,7 +239,7 @@ class got_it_everywhere(got_it):
         self.exclude = exclude or set()
         self.include = include or set()
         # we need to keep track of seen methods separately for each class,
-        # so once got_it inited, it could be reused as many times as needed
+        # so got_it_everywhere instance could be reused as many times as needed
         self.seen_methods: Dict[Type[Any], Set[str]] = defaultdict(self.exclude.copy)
 
     def wrap(self, wrapped_cls: Type[Any]):

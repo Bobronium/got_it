@@ -1,3 +1,4 @@
+import re
 from typing import List, Any, Dict, Tuple
 
 import pydantic
@@ -99,14 +100,14 @@ def test_classes():
 
 def test_config():
     class MyConfig(BaseConfig):
-        allow_population_by_alias = True
+        allow_population_by_field_name = True
 
     @got_it(config=MyConfig)
     def f(a: int, **kwargs):
         return a, kwargs
 
     MyConfig.extra = pydantic.Extra.forbid
-    assert f.__args_model__.__config__.allow_population_by_alias == MyConfig.allow_population_by_alias
+    assert f.__args_model__.__config__.allow_population_by_field_name == MyConfig.allow_population_by_field_name
     assert f(1, z=2) == (1, {'z': 2})
 
 
@@ -135,7 +136,7 @@ def test_model_fields_equality():
 
 
 def test_errors():
-    with pytest.raises(TypeError, match='`got_it` supports keywords arguments only'):
+    with pytest.raises(TypeError, match=re.escape('__init__() takes 1 positional argument but 2 were given')):
         @got_it(BaseConfig)
         def f(a: int): ...
 
