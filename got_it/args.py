@@ -30,11 +30,11 @@ def restore_args(
         known_args = all_args[:known_positional_args_end]
         additional_args = all_args[known_positional_args_end:]
 
-    known_kwargs = {
-        name: arg for name, arg in all_kwargs.items() if name in known_args_names
-    }
-    additional_kwargs = {
-        name: arg for name, arg in all_kwargs.items() if name not in known_args_names
-    }
+    known_kwargs, additional_kwargs = {}, {}
+    for name, arg in all_kwargs.items():
+        if name in known_args_names:
+            known_kwargs[name] = arg
+        else:
+            additional_kwargs[name] = arg
 
     return known_args, additional_args, known_kwargs, additional_kwargs
