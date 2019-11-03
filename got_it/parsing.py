@@ -32,7 +32,7 @@ def parse_args(
     known_args, additional_args, known_kwargs, additional_kwargs = restore_args(
         all_args=all_args,
         all_kwargs=all_kwargs,
-        known_args_names=args_names,
+        known_args_names=set(args_names),
         known_positional_args_end=positional_args_end,
     )
 

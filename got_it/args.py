@@ -1,4 +1,4 @@
-from typing import Tuple, OrderedDict, Optional, Union, Any, Type, NamedTuple
+from typing import Tuple, OrderedDict, Optional, Union, Any, Type, NamedTuple, Set
 
 from .typing import TupleAny, DictStrAny, RestoredArgs
 
@@ -14,7 +14,7 @@ class ArgsSpec(NamedTuple):
 def restore_args(
         all_args: TupleAny,
         all_kwargs: DictStrAny,
-        known_args_names: Tuple[str],
+        known_args_names: Set[str],
         known_positional_args_end: int
 ) -> RestoredArgs:
     """
