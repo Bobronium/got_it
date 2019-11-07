@@ -49,7 +49,7 @@ def parse_args(
     # positional arguments, we need to convert it
     # to kwargs before validation and restore back later
     for arg, name in zip(known_args, args_names):
-        if name in all_kwargs:  # need to manually check that, otherwise kwargs will be overwritten silently
+        if name in all_kwargs:  # need to manually check that, otherwise kwargs may be overwritten silently
             f_name = getattr(wrapped, '__qualname__', wrapped)
             raise TypeError(f"'{f_name}' got multiple values for argument '{name}'")
         known_kwargs[name] = arg
@@ -59,7 +59,7 @@ def parse_args(
         raise validation_error
 
     # restoring regular positional args
-    parsed_known_args = tuple(parsed_kwargs.pop(arg) for arg in args_names[:positional_args_end])
+    parsed_known_args = tuple([parsed_kwargs.pop(arg) for arg in args_names[:positional_args_end]])
     # restoring *args
     parsed_additional_args = parsed_kwargs.pop(var_args_name, ())
     # restoring **kwargs
