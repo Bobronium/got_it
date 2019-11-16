@@ -1,16 +1,27 @@
 import functools
 import inspect
 import logging
-from collections import defaultdict
-from typing import Any, Type, Union, Set, Dict, Optional, OrderedDict, Tuple
+from collections import defaultdict, OrderedDict
+from types import FunctionType
+from typing import Any, Type, Union, Set, Dict, Optional, Tuple, no_type_check, cast
 
 import pydantic
 
 from .args import ArgsSpec
 from .parsing import parse_args, parse_result
-from .typing import Wrapped, Decorator, T, DictStrAny, TupleAny, STRICT_TYPES_MAPPING, ModelType
+from .typing import (
+    T,
+    Wrapped,
+    Decorator,
+    DictStrAny,
+    TupleAny,
+    STRICT_TYPES_MAPPING,
+    ModelType,
+    FieldDefinitions,
+    TypeAny
+)
 
-__all__ = ('got_it', 'got_it_everywhere', 'ignore_it')
+__all__ = ('all_methods', 'got_it', 'ignore_it')
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +37,15 @@ def ignore_it(obj: T) -> T:
 
     Can be replaced with @got_it(exclude={'method_name'})
     """
-    obj.__is_ignored__ = True
+    obj.__is_ignored__ = True  # type: ignore
     return obj
 
 
 class GotItMeta(type):
+    @no_type_check
     def __call__(
             cls,
-            *one_obj_to_wrap: Wrapped,  # use @got_it without call, if no parameters needed
+            maybe_obj_to_wrap: Wrapped = None,  # use @got_it without call, if no parameters needed
             **kwargs,
     ) -> Union[Wrapped, Decorator]:
         """
@@ -53,26 +65,27 @@ class GotItMeta(type):
         :param strict_types: enable strict validation for str, int, bool and float (pydantic>=1.0)
         :param ignore_untyped: threat arguments without type annotation and default like Any
         :param check_returns: tells whether to check return annotation or not
-        :param include_bases: include methods from bases when decorating a class
-        :param exclude: exclude methods when decorating a class
-        :param include: force include methods, which are excluded by default (e. g. magic methods)
         :param validators: validators for pydantic.create_model
 
         :return: parametrized decorator or decorated function/class
         """
-        # init class
-        if not one_obj_to_wrap:
-            return super().__call__(**kwargs)
+        init_cls = super().__call__
+        if maybe_obj_to_wrap is None:
+            return init_cls(**kwargs)
 
-        to_wrap = one_obj_to_wrap[0]
+        to_wrap = maybe_obj_to_wrap
         # check, that is not a config given as positional arg, just in case.
         # we can't just check that is function cause it can be a class to decorate
         is_config = isinstance(to_wrap, type) and issubclass(to_wrap, pydantic.BaseConfig) or any(
             not attr.startswith('_') and attr in pydantic.BaseConfig.__dict__ for attr in to_wrap.__dict__
         )
-        if is_config or len(one_obj_to_wrap) > 1:
-            super().__call__(*one_obj_to_wrap, **kwargs)  # to get TypeError
-        return super().__call__(**kwargs).wrap(to_wrap)
+        if is_config:
+            # seems like config was passed as a positional arg
+            # throwing it to class to get TypeError
+            init_cls(to_wrap, **kwargs)
+
+        # instancing class and wrapping object straight away
+        return init_cls(**kwargs).wrap(to_wrap)
 
 
 class got_it(metaclass=GotItMeta):
@@ -82,27 +95,29 @@ class got_it(metaclass=GotItMeta):
             config: Type[pydantic.BaseConfig] = None,
             strict_types: bool = False,
             ignore_untyped: bool = False,
-            check_returns: bool = None,
+            wrap_returns: bool = None,
             **validators: classmethod
     ) -> None:
         self.config = config
         self.strict_types = strict_types
         self.ignore_untyped = ignore_untyped
-        self.check_returns = check_returns
+        self.check_returns = wrap_returns
         self.validators = validators
 
-    def wrap(self, wrapped):
+    def wrap(self, wrapped: Wrapped) -> Wrapped:
         if inspect.isclass(wrapped):
-            raise TypeError('wrapping class is not supported, use `got_it_everywhere` instead')
+            raise TypeError('wrapping class is not supported, use `all_methods(got_it)` instead')
 
         is_method = False
-        wrapped_type = type(wrapped)
+        wrapped_type: TypeAny = type(wrapped)
         if wrapped_type in (staticmethod, classmethod):
             is_method = True
-            wrapped = wrapped.__func__
+            wrapped = wrapped.__func__  # type: ignore
 
+        wrapped = cast(FunctionType, wrapped)
         args_spec = self.get_args_spec(wrapped)
-        args_model, returns_model = self.prepare_models(wrapped, args_spec)
+        args_model = self.prepare_args_model(wrapped, args_spec.field_definitions)
+        returns_model = self.prepare_returns_model(wrapped) if self.check_returns else None
 
         if inspect.iscoroutine(wrapped):
             async def wrapper(*args, **kwargs):
@@ -126,9 +141,9 @@ class got_it(metaclass=GotItMeta):
 
     __call__ = wrap
 
-    def get_args_spec(self, wrapped: Wrapped) -> ArgsSpec:
+    def get_args_spec(self, wrapped: FunctionType) -> ArgsSpec:
         sign = inspect.signature(wrapped)
-        field_definitions = OrderedDict()
+        field_definitions: FieldDefinitions = OrderedDict()
         args_name = None
         kwargs_name = None
         positional_args_end = None
@@ -155,7 +170,7 @@ class got_it(metaclass=GotItMeta):
                 if annotation is empty_:
                     annotation = DictStrAny
                 else:
-                    annotation = Dict[str, annotation]
+                    annotation = Dict[str, annotation]  # type: ignore
                 default = {}
 
             if annotation is empty_:
@@ -165,7 +180,7 @@ class got_it(metaclass=GotItMeta):
                     annotation = Any
                 elif no_default:
                     raise TypeError(f"No annotation or default value specified for argument '{name}' of {wrapped}"
-                                    f"use `ignore_untyped=False` to threat such params as typing.Any")
+                                    f"use `ignore_untyped=True` to threat such params as typing.Any")
             elif self.strict_types:
                 if STRICT_TYPES_MAPPING is NotImplemented:
                     raise RuntimeError('To use strict validators install pydantic>=1.0')
@@ -178,9 +193,6 @@ class got_it(metaclass=GotItMeta):
 
             field_definitions[name] = default if annotation is empty_ else (annotation, default)
 
-        if not field_definitions:
-            raise TypeError("Functions without arguments or with **kwargs only are not supported")
-
         return ArgsSpec(
             field_definitions=field_definitions,
             var_args_name=args_name,
@@ -189,80 +201,73 @@ class got_it(metaclass=GotItMeta):
             positional_args_end=positional_args_end,
         )
 
-    def prepare_models(self, wrapped: Wrapped, args_spec: ArgsSpec) -> Tuple[ModelType, Optional[ModelType]]:
+    def prepare_args_model(self, wrapped: FunctionType, field_definitions: FieldDefinitions) -> ModelType:
         args_model = pydantic.create_model(
             model_name=getattr(wrapped, '__qualname__', 'callable') + '_args_model',
             __config__=self.config,
             __validators__=self.validators,
-            **args_spec.field_definitions
+            **field_definitions
         )
 
         args_model.__config__.extra = pydantic.Extra.forbid
         logging.debug(f'Created arguments model for {wrapped} with fields: {args_model.__fields__}')
-        wrapped.__args_model__ = args_model
+        wrapped.__args_model__ = args_model  # type: ignore
+        return args_model
 
-        if self.check_returns:
-            class ReturnModel(pydantic.BaseModel):
-                Config = self.config
-                __annotations__ = {'__root__': wrapped.__annotations__['return']}
-
-            logging.debug(f'Created returns model for {wrapped} with fields: {ReturnModel.__fields__}')
-            wrapped.__returns_model__ = ReturnModel
-            return args_model, ReturnModel
-
-        wrapped.__returns_model__ = None
-        return args_model, None
-
-
-class got_it_everywhere(got_it):
-    """Wraps methods of a class"""
-    def __init__(
-            self,
-            *,
-            config: Type[pydantic.BaseConfig] = None,
-            strict_types: bool = False,
-            ignore_untyped: bool = False,
-            check_returns: bool = None,
-            include_bases: bool = False,
-            exclude: Set[str] = None,
-            include: Set[str] = None,
-            **validators: classmethod
-    ) -> None:
-        super().__init__(
-            config=config,
-            strict_types=strict_types,
-            ignore_untyped=ignore_untyped,
-            check_returns=check_returns,
-            **validators
+    def prepare_returns_model(self, wrapped: FunctionType) -> ModelType:
+        return_type = wrapped.__annotations__['return']
+        returns_model = pydantic.create_model(
+            model_name=getattr(wrapped, '__qualname__', 'callable') + '_returns_model',
+            __config__=self.config,
+            returns=(return_type, ...)
         )
-        self.include_bases = include_bases
-        self.exclude = exclude or set()
-        self.include = include or set()
-        # we need to keep track of seen methods separately for each class,
-        # so got_it_everywhere instance could be reused as many times as needed
-        self.seen_methods: Dict[Type[Any], Set[str]] = defaultdict(self.exclude.copy)
+        logging.debug(f'Created returns model for {wrapped} with fields: {returns_model.__fields__}')
+        wrapped.__returns_model__ = returns_model  # type: ignore
 
-    def wrap(self, wrapped_cls: Type[Any]):
-        seen = self.seen_methods[wrapped_cls]
-        for cls in wrapped_cls.__mro__ if self.include_bases else (wrapped_cls,):
+        return returns_model
+
+
+def all_methods(wrapper: got_it, include_bases: bool = False, exclude: Set[str] = None, include: Set[str] = None):
+    """
+    Wraps all methods of class, except magic and private methods
+
+    @all_methods(got_it)
+    class MyClass:
+        ...
+
+    :param wrapper: parametrized instance of got_it, or just plain got_it class
+    :param include_bases: include methods from bases when decorating a class
+    :param exclude: exclude methods when decorating a class
+    :param include: force include methods, which are excluded by default (e. g. magic and private methods)
+    """
+    exclude = exclude or set()
+    include = include or set()
+    # we need to keep track of seen methods separately for each class,
+    # so parametrized `all_methods` could be reused as many times as needed
+    seen_methods: Dict[TypeAny, Set[str]] = defaultdict(exclude.copy)
+
+    def wrap(wrapped_cls: TypeAny) -> TypeAny:
+        seen = seen_methods[wrapped_cls]
+        classes_to_wrap = wrapped_cls.__mro__ if include_bases else (wrapped_cls,)
+        for cls in classes_to_wrap:  # type: ignore
             for attr, obj in cls.__dict__.items():
                 if attr in seen:
                     continue
 
                 seen.add(attr)  # so we won't override wrapped_cls methods with bases methods
                 is_ignored = getattr(obj, '__is_ignored__', False)
-                is_dundered = attr.startswith('__') and attr.endswith('__')
-                if is_ignored or (inspect.isclass(obj) or is_dundered and attr not in self.include):
+                is_sundered = attr.startswith('_')  # or dundered, whatever
+                if is_ignored or (inspect.isclass(obj) or is_sundered and attr not in include):  # type: ignore
                     continue
 
                 obj_type = type(obj)
                 if obj_type is property:
-                    new_fset = super().wrap(obj.fset)
+                    new_fset = wrapper(obj.fset)
                     new_obj = obj.setter(new_fset)
                     setattr(wrapped_cls, attr, new_obj)
                 elif callable(obj) or obj_type in (classmethod, staticmethod):
-                    new_obj = super().wrap(obj)
+                    new_obj = wrapper(obj)
                     setattr(wrapped_cls, attr, new_obj)
         return wrapped_cls
 
-    __call__ = wrap
+    return wrap

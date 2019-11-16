@@ -1,5 +1,5 @@
-from typing import Tuple, Any, Iterable, Dict, TypeVar, Union, Callable, Type
 import warnings
+from typing import Tuple, Any, Iterable, Dict, Union, Callable, Type, OrderedDict, TypeVar
 
 import pydantic
 
@@ -11,33 +11,16 @@ except ImportError:
 else:
     STRICT_TYPES_MAPPING = {int: StrictInt, float: StrictFloat, bool: StrictBool, str: StrictStr}
 
-try:
-    from typing import Protocol
-except ImportError:
-    try:
-        from typing_extensions import Protocol
-    except ImportError:
-        Protocol = NotImplemented
+T = TypeVar('T')
 
+TypeAny = Type[Any]
 TupleAny = Tuple[Any, ...]
 IterableAny = Iterable[Any]
 DictStrAny = Dict[str, Any]
 RestoredArgs = Tuple[TupleAny, TupleAny, DictStrAny, DictStrAny]
 ParsedArgs = Tuple[Iterable[Any], TupleAny, DictStrAny, DictStrAny]
 ModelType = Type[pydantic.BaseModel]
+FieldDefinitions = OrderedDict[str, Union[Any, Tuple[Any, Any]]]
+Wrapped = Union[Callable[..., Any], staticmethod, classmethod]
+Decorator = Callable[[Wrapped], Wrapped]
 
-T = TypeVar('T')
-
-if Protocol is NotImplemented:
-    Wrapped = Union[Callable[..., T], Type[Any]]
-    Decorator = Callable[[Wrapped, bool], Wrapped]
-
-else:
-    class Wrapped(Protocol):
-        __args_model__: Type[pydantic.BaseModel]
-
-        def __call__(self, *args, **kwargs) -> T: ...
-
-
-    class Decorator(Protocol):
-        def __call__(self, wrapped: Wrapped, decorating_method: bool = False) -> Wrapped: ...

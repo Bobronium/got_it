@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError, BaseConfig, BaseModel
 
 from got_it import got_it, ignore_it
-from got_it.decorators import got_it_everywhere
+from got_it.decorators import all_methods
 
 
 def test_basic():
@@ -52,7 +52,7 @@ def test_classes():
         def static_m(i: int):
             return i
 
-    @got_it_everywhere(include_bases=True, exclude={'exclude_m'}, include={'__init__'})
+    @all_methods(got_it, include_bases=True, exclude={'exclude_m'}, include={'__init__'})
     class A(B):
         def __init__(self, i: int):
             self.i = i
@@ -111,6 +111,14 @@ def test_config():
     assert f(1, z=2) == (1, {'z': 2})
 
 
+def test_wrap_returns():
+    @got_it(wrap_returns=True)
+    def f() -> Dict[str, int]:
+        return {1: '2', 3: '4'}
+
+    assert f() == {'1': 2, '3': 4}
+
+
 def test_model_fields_equality():
     @got_it
     def f(a: int, b: List[float], *ints: int, c=2, z: Any = None, **bools: bool): ...
@@ -150,6 +158,6 @@ def test_errors():
     with pytest.raises(TypeError, match="got multiple values for argument 'a'"):
         f(1, a=1)
 
-    with pytest.raises(TypeError, match='wrapping class is not supported, use `got_it_everywhere` instead'):
+    with pytest.raises(TypeError, match=r'wrapping class is not supported, use `all_methods\(got_it\)` instead'):
         @got_it(exclude=set(), include_bases=True)
         class A: ...

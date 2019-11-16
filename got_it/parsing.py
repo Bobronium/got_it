@@ -13,6 +13,8 @@ if 'raise_exc' in inspect.getfullargspec(pydantic.validate_model).args:
 else:
     validate_model = pydantic.validate_model
 
+RETURN_KEY = 'returns'
+
 
 def parse_args(
         model: Type[pydantic.BaseModel],
@@ -69,7 +71,7 @@ def parse_args(
 
 
 def parse_result(model, result):
-    result, _fields, validation_error = validate_model(model, result)
+    result, _fields, validation_error = validate_model(model, {RETURN_KEY: result})
     if validation_error:
         raise validation_error
-    return result['__root__']
+    return result[RETURN_KEY]
