@@ -24,6 +24,7 @@ classifiers = [
 tests = [
   "pytest",
   "pydantic>=1.0",
+  "mypy",
 ]
 
 [tool.dephell.main]

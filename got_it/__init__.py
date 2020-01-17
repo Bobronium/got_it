@@ -1,3 +1,5 @@
+"""It's not a validator. It's better!"""
+
 from .decorators import all_methods, got_it, ignore_it
 
 
