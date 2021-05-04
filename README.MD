@@ -1,4 +1,7 @@
 # Got it!
+
+# Pydantic now has similar decorator out of the box, you should stick with it.
+
 ### It's not a validator. It's better!
 
 `got_it` is a tool built upon a pydantic to parse incoming arguments of a function
